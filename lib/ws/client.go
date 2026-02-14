@@ -20,6 +20,8 @@ type Client struct {
 	egress chan Event
 }
 
+// NewClient creates a Client that wraps the provided WebSocket connection and manager.
+// The returned Client has an internal buffered egress channel (capacity 256) for outgoing events.
 func NewClient(conn *websocket.Conn, manager *Manager) *Client {
 	return &Client{
 		connection: conn,

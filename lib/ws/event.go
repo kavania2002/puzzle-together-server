@@ -28,6 +28,10 @@ type NewMessageEvent struct {
 	Sent time.Time `json:"sent"`
 }
 
+// SendMessageHandler handles a send_message event by broadcasting a new_message event to all connected clients.
+// It unmarshals the incoming payload into a SendMessageEvent, constructs a NewMessageEvent with the current time,
+// marshals it to JSON, and sends the resulting Event to each client's egress channel. Returns an error if payload
+// unmarshal or message marshal fails.
 func SendMessageHandler(event Event, c *Client) error {
 	var chatEvent SendMessageEvent
 	if err := json.Unmarshal(event.Payload, &chatEvent); err != nil {
