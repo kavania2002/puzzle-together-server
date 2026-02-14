@@ -1,8 +1,10 @@
 package lib
 
 import (
+	"context"
 	"encoding/json"
 	"log"
+	"sync"
 
 	"github.com/gorilla/websocket"
 )
@@ -18,54 +20,91 @@ type Client struct {
 
 	// egress used to avoid concurrent writes to websocket
 	egress chan Event
+
+	// done channel to coordinate graceful shutdown
+	done chan struct{}
+
+	// ctx and cancel for coordinated shutdown
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	// closeOnce ensures cleanup happens exactly once
+	closeOnce sync.Once
 }
 
 // NewClient creates a Client that wraps the provided WebSocket connection and manager.
 // The returned Client has an internal buffered egress channel (capacity 256) for outgoing events.
 func NewClient(conn *websocket.Conn, manager *Manager) *Client {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
 		connection: conn,
 		manager:    manager,
 		egress:     make(chan Event, 256),
+		done:       make(chan struct{}),
+		ctx:        ctx,
+		cancel:     cancel,
 	}
 }
 
-func (c *Client) readMessages() {
-	defer func() {
+// close handles cleanup of client resources in a thread-safe, idempotent manner.
+// It uses sync.Once to ensure cleanup happens exactly once, even if called from
+// multiple goroutines.
+func (c *Client) close() {
+	c.closeOnce.Do(func() {
+		// Signal shutdown to all goroutines
+		c.cancel()
+		close(c.done)
+
+		// Remove from manager and close connection
 		c.manager.removeClient(c)
-	}()
+	})
+}
+
+func (c *Client) readMessages() {
+	defer c.close()
 
 	for {
-		_, payload, err := c.connection.ReadMessage()
+		select {
+		case <-c.done:
+			return
+		default:
+			_, payload, err := c.connection.ReadMessage()
 
-		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("Error reading message: %v", err)
+			if err != nil {
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+					log.Printf("Error reading message: %v", err)
+				}
+				return
 			}
-			break
-		}
 
-		var request Event
-		if err := json.Unmarshal(payload, &request); err != nil {
-			log.Printf("Erro unmarshalling message %v", err)
-			break
-		}
+			var request Event
+			if err := json.Unmarshal(payload, &request); err != nil {
+				log.Printf("Erro unmarshalling message %v", err)
+				return
+			}
 
-		if err := c.manager.routeEvent(request, c); err != nil {
-			log.Println("Error handling message: ", err)
+			if err := c.manager.routeEvent(request, c); err != nil {
+				log.Println("Error handling message: ", err)
+			}
 		}
 	}
 }
 
 func (c *Client) writeMessage() {
-	defer func() {
-		c.manager.removeClient(c)
-	}()
+	defer c.close()
 
 	for {
 		select {
+		case <-c.done:
+			// Send close message and exit
+			if err := c.connection.WriteMessage(websocket.CloseMessage, nil); err != nil {
+				log.Println("Error sending close message: ", err)
+			}
+			return
+
 		case message, ok := <-c.egress:
 			if !ok {
+				// Channel closed, send close message and exit
 				if err := c.connection.WriteMessage(websocket.CloseMessage, nil); err != nil {
 					log.Println("Connection Closed: ", err)
 				}
@@ -80,6 +119,7 @@ func (c *Client) writeMessage() {
 
 			if err := c.connection.WriteMessage(websocket.TextMessage, data); err != nil {
 				log.Println(err)
+				return
 			}
 			log.Println("sent message")
 		}

@@ -3,6 +3,7 @@ package lib
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -32,6 +33,7 @@ type NewMessageEvent struct {
 // It unmarshals the incoming payload into a SendMessageEvent, constructs a NewMessageEvent with the current time,
 // marshals it to JSON, and sends the resulting Event to each client's egress channel. Returns an error if payload
 // unmarshal or message marshal fails.
+// Uses RLock for reading the client list and non-blocking sends to prevent deadlocks.
 func SendMessageHandler(event Event, c *Client) error {
 	var chatEvent SendMessageEvent
 	if err := json.Unmarshal(event.Payload, &chatEvent); err != nil {
@@ -53,8 +55,20 @@ func SendMessageHandler(event Event, c *Client) error {
 	outgoingEvent.Payload = data
 	outgoingEvent.Type = EventNewMessage
 
+	// Use RLock to safely iterate over clients
+	c.manager.RLock()
+	defer c.manager.RUnlock()
+
 	for client := range c.manager.clients {
-		client.egress <- outgoingEvent
+		// Non-blocking send to prevent deadlocks
+		// If the channel is full or closed, skip this client
+		select {
+		case client.egress <- outgoingEvent:
+			// Message sent successfully
+		default:
+			// Channel full or client is shutting down, skip
+			log.Printf("Failed to send message to client, channel full or closed")
+		}
 	}
 
 	return nil

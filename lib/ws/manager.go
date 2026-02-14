@@ -79,9 +79,15 @@ func (m *Manager) removeClient(client *Client) {
 	m.Lock()
 	defer m.Unlock()
 
+	// Check if client exists in the map before cleanup
 	if _, ok := m.clients[client]; ok {
-		client.connection.Close()
-		close(client.egress)
+		// Remove from client list first
 		delete(m.clients, client)
+		
+		// Close the connection
+		client.connection.Close()
+		
+		// Close the egress channel
+		close(client.egress)
 	}
 }
