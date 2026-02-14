@@ -67,7 +67,7 @@ func SendMessageHandler(event Event, c *Client) error {
 			// Message sent successfully
 		default:
 			// Channel full or client is shutting down, skip
-			log.Printf("Failed to send message to client, channel full or closed")
+			log.Printf("Failed to send message to client %p, channel full or closed", client)
 		}
 	}
 

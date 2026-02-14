@@ -64,28 +64,23 @@ func (c *Client) readMessages() {
 	defer c.close()
 
 	for {
-		select {
-		case <-c.done:
+		_, payload, err := c.connection.ReadMessage()
+
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Printf("Error reading message: %v", err)
+			}
 			return
-		default:
-			_, payload, err := c.connection.ReadMessage()
+		}
 
-			if err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					log.Printf("Error reading message: %v", err)
-				}
-				return
-			}
+		var request Event
+		if err := json.Unmarshal(payload, &request); err != nil {
+			log.Printf("Error unmarshalling message %v", err)
+			return
+		}
 
-			var request Event
-			if err := json.Unmarshal(payload, &request); err != nil {
-				log.Printf("Erro unmarshalling message %v", err)
-				return
-			}
-
-			if err := c.manager.routeEvent(request, c); err != nil {
-				log.Println("Error handling message: ", err)
-			}
+		if err := c.manager.routeEvent(request, c); err != nil {
+			log.Println("Error handling message: ", err)
 		}
 	}
 }
