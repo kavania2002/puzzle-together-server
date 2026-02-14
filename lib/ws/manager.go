@@ -2,7 +2,7 @@ package lib
 
 import (
 	"errors"
-	"fmt"
+	"log"
 	"net/http"
 	"sync"
 
@@ -37,13 +37,10 @@ func (m *Manager) setupEventHandlers() {
 
 func (m *Manager) routeEvent(event Event, c *Client) error {
 	if handler, ok := m.handlers[event.Type]; ok {
-		if err := handler(event, c); err != nil {
-			return err
-		}
-		return nil
-	} else {
-		return ErrEventNotSupported
+		return handler(event, c)
 	}
+
+	return ErrEventNotSupported
 }
 
 var upgrader = websocket.Upgrader{
@@ -57,7 +54,7 @@ var upgrader = websocket.Upgrader{
 func (m *Manager) ServeWS(c *gin.Context) {
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		fmt.Println("Error upgrading to Websocket:", err)
+		log.Println("Error upgrading to Websocket:", err)
 		return
 	}
 
@@ -80,8 +77,17 @@ func (m *Manager) removeClient(client *Client) {
 	defer m.Unlock()
 
 	if _, ok := m.clients[client]; ok {
+		delete(m.clients, client)
 		client.connection.Close()
 		close(client.egress)
-		delete(m.clients, client)
+	}
+}
+
+func (m *Manager) broadcastMessage(event Event) {
+	m.RLock()
+	defer m.RUnlock()
+
+	for client := range m.clients {
+		client.egress <- event
 	}
 }

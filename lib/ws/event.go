@@ -35,7 +35,7 @@ type NewMessageEvent struct {
 func SendMessageHandler(event Event, c *Client) error {
 	var chatEvent SendMessageEvent
 	if err := json.Unmarshal(event.Payload, &chatEvent); err != nil {
-		return fmt.Errorf("bay payload in request: %v", err)
+		return fmt.Errorf("bad payload in request: %v", err)
 	}
 
 	var broadMessage NewMessageEvent
@@ -46,16 +46,14 @@ func SendMessageHandler(event Event, c *Client) error {
 
 	data, err := json.Marshal(broadMessage)
 	if err != nil {
-		return fmt.Errorf("failed to marshal broadchat message %v", err)
+		return fmt.Errorf("failed to marshal broadcast message %v", err)
 	}
 
 	var outgoingEvent Event
 	outgoingEvent.Payload = data
 	outgoingEvent.Type = EventNewMessage
 
-	for client := range c.manager.clients {
-		client.egress <- outgoingEvent
-	}
+	c.manager.broadcastMessage(outgoingEvent)
 
 	return nil
 }

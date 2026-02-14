@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	lib "kavania2002/puzzle-together-server/lib/ws"
+	ws "kavania2002/puzzle-together-server/lib/ws"
 
 	"github.com/gin-gonic/gin"
 )
@@ -13,7 +13,7 @@ import (
 // - GET "/" which responds with "Hello World",
 // - GET "/ws" which delegates WebSocket handling to the provided Manager,
 // - an API group "/api/v1" containing GET "/health" served by healthHandler.
-func RegisterRoutes(m *lib.Manager, r *gin.Engine) {
+func RegisterRoutes(m *ws.Manager, r *gin.Engine) {
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, "Hello World")
 	})

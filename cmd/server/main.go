@@ -2,18 +2,21 @@ package main
 
 import (
 	"kavania2002/puzzle-together-server/api"
-	lib "kavania2002/puzzle-together-server/lib/ws"
+	ws "kavania2002/puzzle-together-server/lib/ws"
+	"log"
 
 	"github.com/gin-gonic/gin"
 )
 
 // main creates a WebSocket manager, registers API routes with a default Gin router, and starts the HTTP server.
-// It initializes a new ws manager via lib.NewManager(), registers routes using api.RegisterRoutes(manager, r),
+// It initializes a new ws manager via ws.NewManager(), registers routes using api.RegisterRoutes(manager, r),
 // and runs the Gin server on the default listen address.
 func main() {
-	manager := lib.NewManager()
+	manager := ws.NewManager()
 
 	r := gin.Default()
 	api.RegisterRoutes(manager, r)
-	r.Run()
+	if err := r.Run(); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
 }
