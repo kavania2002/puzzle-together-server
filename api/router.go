@@ -8,6 +8,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// RegisterRoutes registers HTTP routes on the provided Gin engine.
+// It mounts:
+// - GET "/" which responds with "Hello World",
+// - GET "/ws" which delegates WebSocket handling to the provided Manager,
+// - an API group "/api/v1" containing GET "/health" served by healthHandler.
 func RegisterRoutes(m *lib.Manager, r *gin.Engine) {
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, "Hello World")

@@ -20,6 +20,8 @@ type Manager struct {
 	handlers map[string]EventHandler
 }
 
+// NewManager creates and returns a Manager with an initialized client list and handler map.
+// The returned Manager has its default event handlers registered.
 func NewManager() *Manager {
 	m := &Manager{
 		clients:  make(ClientList),
