@@ -68,7 +68,7 @@ func (c *Client) readMessages() {
 			var request Event
 			if err := json.Unmarshal(payload, &request); err != nil {
 				log.Printf("Erro unmarshalling message %v", err)
-				return
+				continue
 			}
 
 			if err := c.manager.routeEvent(request, c); err != nil {

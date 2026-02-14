@@ -88,6 +88,10 @@ func (m *Manager) broadcastMessage(event Event) {
 	defer m.RUnlock()
 
 	for client := range m.clients {
-		client.egress <- event
+		select {
+		case client.egress <- event:
+		default:
+			log.Println("Client egress buffer full, dropping message")
+		}
 	}
 }
