@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -27,24 +28,40 @@ type Client struct {
 	cancel context.CancelFunc
 
 	closeOnce sync.Once
+
+	pingTicker   *time.Ticker
+	pingInterval time.Duration
+	readDeadline time.Duration
 }
 
 // NewClient creates a Client that wraps the provided WebSocket connection and manager.
 // The returned Client has an internal buffered egress channel (capacity 256) for outgoing events.
 func NewClient(conn *websocket.Conn, manager *Manager) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
+	pingInterval := 10 * time.Second
+	readDeadline := 20 * time.Second
 	return &Client{
-		connection: conn,
-		manager:    manager,
-		egress:     make(chan Event, 256),
-		done:       make(chan struct{}),
-		ctx:        ctx,
-		cancel:     cancel,
+		connection:   conn,
+		manager:      manager,
+		egress:       make(chan Event, 256),
+		done:         make(chan struct{}),
+		ctx:          ctx,
+		cancel:       cancel,
+		pingTicker:   time.NewTicker(pingInterval),
+		pingInterval: pingInterval,
+		readDeadline: readDeadline,
 	}
 }
 
 func (c *Client) readMessages() {
 	defer c.close()
+
+	// Set initial read deadline
+	c.connection.SetReadDeadline(time.Now().Add(c.readDeadline))
+	c.connection.SetPongHandler(func(string) error {
+		c.connection.SetReadDeadline(time.Now().Add(c.readDeadline))
+		return nil
+	})
 
 	for {
 		select {
@@ -80,16 +97,22 @@ func (c *Client) readMessages() {
 
 func (c *Client) writeMessage() {
 	defer c.close()
+	defer c.pingTicker.Stop()
 
 	for {
 		select {
 		case <-c.done:
-
 			// Send close message and exit
 			if err := c.connection.WriteMessage(websocket.CloseMessage, nil); err != nil {
 				log.Println("Error sending close message: ", err)
 			}
 			return
+
+		case <-c.pingTicker.C:
+			if err := c.connection.WriteMessage(websocket.PingMessage, nil); err != nil {
+				log.Println("Error sending ping message: ", err)
+				return
+			}
 
 		case message, ok := <-c.egress:
 			if !ok {
@@ -120,6 +143,10 @@ func (c *Client) close() {
 	c.closeOnce.Do(func() {
 		c.cancel()
 		close(c.done)
+
+		if c.pingTicker != nil {
+			c.pingTicker.Stop()
+		}
 
 		c.manager.removeClient(c)
 	})
